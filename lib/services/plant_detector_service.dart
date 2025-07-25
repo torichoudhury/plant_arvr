@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class PlantDetectionResult {
   final String label;
@@ -10,56 +10,56 @@ class PlantDetectionResult {
 }
 
 class PlantDetectorService {
-  static const String apiKey =
-      'AIzaSyCnc12Lkv8U6rzjfX_Fmzw1BGk8BPoVA3w';
-  late final GenerativeModel _model;
-
   Future<void> loadModel() async {
-    try {
-      _model = GenerativeModel(model: 'gemini-pro-vision', apiKey: apiKey);
-    } catch (e) {
-      throw Exception('Failed to initialize Gemini: $e');
-    }
+    // No model loading needed for API-based detection
+    // You could add a health check here if needed
   }
 
   Future<PlantDetectionResult> detectPlant(File imageFile) async {
     try {
-      // Read image bytes
-      final Uint8List imageBytes = await imageFile.readAsBytes();
-
-      // Create content part for the image
-      final imagePart = DataPart('image/jpeg', imageBytes);
-
-      // Create prompt
-      const String prompt = '''
-        Analyze this plant image and provide:
-        1. The most likely plant species name
-        2. Confidence level (0-100%)
-        Format: "species|confidence"
-      ''';
-
-      // Get response from Gemini
-      final response = await _model.generateContent([
-        Content.multi([TextPart(prompt), imagePart]),
-      ]);
-
-      final text = response.text;
-      if (text == null) throw Exception('No response from Gemini');
-
-      // Parse response (expected format: "species|confidence")
-      final parts = text.split('|');
-      if (parts.length != 2) throw Exception('Invalid response format');
-
-      return PlantDetectionResult(
-        label: parts[0].trim(),
-        confidence: double.parse(parts[1].replaceAll('%', '')) / 100,
+      // Create multipart request
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://25d2a1973063.ngrok-free.app/predict/file'),
       );
+
+      // Add the image file to the request
+      final imageBytes = await imageFile.readAsBytes();
+      final multipartFile = http.MultipartFile.fromBytes(
+        'file', // This matches the parameter name expected by your API
+        imageBytes,
+        filename: 'plant_image.jpg',
+      );
+      request.files.add(multipartFile);
+
+      // Add any additional headers if needed
+      request.headers['Accept'] = 'application/json';
+
+      // Send the request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        // Parse the JSON response
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+        // Extract plant name and confidence from API response
+        final String plantName = jsonResponse['plant_name'] ?? 'Unknown Plant';
+        final double confidence =
+            (jsonResponse['confidence'] ?? 0.0).toDouble();
+
+        return PlantDetectionResult(label: plantName, confidence: confidence);
+      } else {
+        throw Exception(
+          'API request failed with status: ${response.statusCode}',
+        );
+      }
     } catch (e) {
       throw Exception('Detection failed: $e');
     }
   }
 
   Future<void> disposeModel() async {
-    // No explicit cleanup needed for Gemini
+    // No cleanup needed for API-based detection
   }
 }

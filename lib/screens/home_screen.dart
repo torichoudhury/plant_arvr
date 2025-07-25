@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'detect_screen.dart';
+import 'ar_detection_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   @override
@@ -113,7 +114,7 @@ class HomeScreen extends StatelessWidget {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.view_in_ar, size: 24),
-                        label: const Text('AR/VR Experience'),
+                        label: const Text('AR Detection'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1976D2),
                           foregroundColor: Colors.white,
@@ -123,10 +124,10 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ),
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('AR/VR feature coming soon!'),
-                              backgroundColor: Color(0xFF1976D2),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ArDetectionScreen(),
                             ),
                           );
                         },

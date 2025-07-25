@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/plant_detector_service.dart';
+import 'ar_detection_screen.dart';
 
 class DetectScreen extends StatefulWidget {
   @override
@@ -263,6 +264,18 @@ class _DetectScreenState extends State<DetectScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.view_in_ar),
+            tooltip: 'Switch to AR Mode',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ArDetectionScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(

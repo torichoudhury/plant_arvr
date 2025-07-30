@@ -20,7 +20,7 @@ class PlantDetectorService {
       // Create multipart request
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('https://b62525be5ffd.ngrok-free.app/predict/file'),
+        Uri.parse('https://74db469f894a.ngrok-free.app/predict/file'),
       );
 
       // Add the image file to the request

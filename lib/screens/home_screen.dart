@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'detect_screen.dart';
 import 'ar_detection_screen.dart';
+import 'virtual_garden_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   @override
@@ -128,6 +129,32 @@ class HomeScreen extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => ArDetectionScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.park_outlined, size: 24),
+                        label: const Text('Virtual Garden'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF388E3C),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VirtualGardenScreen(),
                             ),
                           );
                         },

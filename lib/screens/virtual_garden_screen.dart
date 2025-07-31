@@ -31,6 +31,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
   Timer? _statusTimer;
   List<String> placedNodeNames = []; // Track placed nodes
   List<ARPlaneAnchor> placedAnchors = []; // Track placed anchors
+  String selectedPlant = "neem"; // Default plant selection
 
   @override
   void initState() {
@@ -114,7 +115,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
       setState(() {
         isARReady = true;
         isInitializing = false;
-        statusText = "AR Ready! Point at flat surfaces and tap to place objects";
+        statusText = "AR Ready! Point at flat surfaces and tap to place ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
       });
 
       print("AR initialization completed successfully");
@@ -147,7 +148,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
       Timer(const Duration(seconds: 3), () {
         if (mounted) {
           setState(() {
-            statusText = "Point at flat surfaces and tap to place objects";
+            statusText = "Point at flat surfaces and tap to place ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
           });
         }
       });
@@ -170,14 +171,34 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
       print("Anchor added: $didAddAnchor");
       
       if (didAddAnchor == true) {
-        // Create a colorful cube instead of sphere for better visibility
+        // Get plant model URL and properties based on selection
+        String modelUrl;
+        String plantName;
+        vector_math.Vector3 scale;
+        vector_math.Vector3 position;
+        
+        if (selectedPlant == "neem") {
+          // Neem tree model - using a tree/plant model
+          modelUrl = "assets/models/neem.glb"; // Placeholder - we'll use a better plant model
+          plantName = "Neem Plant";
+          scale = vector_math.Vector3(0.15, 0.15, 0.15);
+          position = vector_math.Vector3(0.0, 0.0, 0.0);
+        } else {
+          // Tulsi plant model
+          modelUrl = "assets/models/basil.glb"; // Using pot as tulsi placeholder
+          plantName = "Tulsi Plant";
+          scale = vector_math.Vector3(0.1, 0.1, 0.1);
+          position = vector_math.Vector3(0.0, 0.02, 0.0);
+        }
+
+        // Create plant node
         var node = ARNode(
-          type: NodeType.webGLB,
-          uri: "https://github.com/KhronosGroup/glTF-Sample-Models/raw/master/2.0/Box/glTF-Binary/Box.glb",
-          scale: vector_math.Vector3(0.1, 0.1, 0.1), // Smaller scale
-          position: vector_math.Vector3(0.0, 0.05, 0.0), // Slightly elevated
+          type: NodeType.localGLTF2,
+          uri: modelUrl,
+          scale: scale,
+          position: position,
           rotation: vector_math.Vector4(0.0, 1.0, 0.0, 0.0),
-          name: "box_$objectCount",
+          name: "${selectedPlant}_$objectCount",
         );
 
         bool? didAddNode = await arObjectManager!.addNode(node, planeAnchor: anchor);
@@ -190,14 +211,14 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
           
           setState(() {
             objectCount++;
-            statusText = "Success! Object #$objectCount placed";
+            statusText = "Success! $plantName #$objectCount placed";
           });
           
           // Reset status after celebration
           Timer(const Duration(seconds: 2), () {
             if (mounted) {
               setState(() {
-                statusText = "Tap on surfaces to place more objects";
+                statusText = "Tap on surfaces to place more ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
               });
             }
           });
@@ -292,17 +313,17 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
 
   Widget _buildObjectCounter() {
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 20,
+      bottom: MediaQuery.of(context).padding.bottom + 80,
       left: 16,
       right: 16,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.9),
+          color: Colors.green.withOpacity(0.9),
           borderRadius: BorderRadius.circular(25),
           boxShadow: [
             BoxShadow(
-              color: Colors.blue.withOpacity(0.3),
+              color: Colors.green.withOpacity(0.3),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -312,14 +333,111 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.view_in_ar, color: Colors.white, size: 20),
+            Icon(
+              selectedPlant == "neem" ? Icons.park : Icons.local_florist,
+              color: Colors.white,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
-              "Objects Placed: $objectCount",
+              "${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} Plants: $objectCount",
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlantSelector() {
+    return Positioned(
+      bottom: MediaQuery.of(context).padding.bottom + 20,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  selectedPlant = "neem";
+                  statusText = "Neem selected - tap surfaces to place plants";
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selectedPlant == "neem" ? Colors.green : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.park,
+                      color: selectedPlant == "neem" ? Colors.white : Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Neem",
+                      style: TextStyle(
+                        color: selectedPlant == "neem" ? Colors.white : Colors.green,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  selectedPlant = "tulsi";
+                  statusText = "Tulsi selected - tap surfaces to place plants";
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selectedPlant == "tulsi" ? Colors.green : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.local_florist,
+                      color: selectedPlant == "tulsi" ? Colors.white : Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Tulsi",
+                      style: TextStyle(
+                        color: selectedPlant == "tulsi" ? Colors.white : Colors.green,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -348,7 +466,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
                     String nodeName = placedNodeNames[i];
                     // Create a temporary ARNode to pass to removeNode
                     var nodeToRemove = ARNode(
-                      type: NodeType.webGLB,
+                      type: NodeType.localGLTF2,
                       uri: "", // Empty URI for removal
                       name: nodeName,
                     );
@@ -366,7 +484,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
                   
                   setState(() {
                     objectCount = 0;
-                    statusText = "All objects cleared - tap surfaces to place new ones";
+                    statusText = "All plants cleared - tap surfaces to place new ones";
                   });
                   
                   print("Successfully cleared all objects");
@@ -377,7 +495,7 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
                   });
                 }
               },
-              tooltip: 'Clear all objects',
+              tooltip: 'Clear all plants',
             ),
         ],
       ),
@@ -394,6 +512,9 @@ class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObse
           
           // Object counter
           _buildObjectCounter(),
+          
+          // Plant selector
+          _buildPlantSelector(),
           
           // Loading indicator during initialization
           if (isInitializing)

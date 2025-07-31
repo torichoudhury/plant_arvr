@@ -1,210 +1,422 @@
-import 'package:flutter/material.dart' hide Colors;
-import 'package:arcore_flutter_plugin/arcore_flutter_plugin.dart';
-import 'package:vector_math/vector_math_64.dart' hide Colors;
-import '../models/plant_model.dart';
-import '../services/gemini_service.dart';
-import 'package:flutter/material.dart' as material show Colors;
+import 'package:flutter/material.dart';
+import 'package:ar_flutter_plugin_2/ar_flutter_plugin.dart';
+import 'package:ar_flutter_plugin_2/datatypes/config_planedetection.dart';
+import 'package:ar_flutter_plugin_2/datatypes/node_types.dart';
+import 'package:ar_flutter_plugin_2/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin_2/models/ar_node.dart';
+import 'package:ar_flutter_plugin_2/managers/ar_location_manager.dart';
+import 'package:ar_flutter_plugin_2/managers/ar_session_manager.dart';
+import 'package:ar_flutter_plugin_2/managers/ar_object_manager.dart';
+import 'package:ar_flutter_plugin_2/managers/ar_anchor_manager.dart';
+import 'package:vector_math/vector_math_64.dart' as vector_math;
+import 'dart:async';
 
-class VirtualGardenScreen extends StatefulWidget {
-  const VirtualGardenScreen({Key? key}) : super(key: key);
+class ImprovedARTest extends StatefulWidget {
+  const ImprovedARTest({Key? key}) : super(key: key);
 
   @override
-  _VirtualGardenScreenState createState() => _VirtualGardenScreenState();
+  _ImprovedARTestState createState() => _ImprovedARTestState();
 }
 
-class _VirtualGardenScreenState extends State<VirtualGardenScreen> {
-  ArCoreController? arCoreController;
+class _ImprovedARTestState extends State<ImprovedARTest> with WidgetsBindingObserver {
+  ARSessionManager? arSessionManager;
+  ARObjectManager? arObjectManager;
+  ARAnchorManager? arAnchorManager;
+  ARLocationManager? arLocationManager;
 
-  List<Plant> availablePlants = [
-    Plant(id: '1', name: 'Aloe Vera', model3dPath: 'assets/3d/aloe_vera.glb'),
-    Plant(id: '2', name: 'Lavender', model3dPath: 'assets/3d/lavender.glb'),
-    Plant(id: '3', name: 'Mint', model3dPath: 'assets/3d/mint.glb'),
-    Plant(id: '4', name: 'Tulsi', model3dPath: 'assets/3d/tulsi.glb'),
-    Plant(id: '5', name: 'Chamomile', model3dPath: 'assets/3d/chamomile.glb'),
-  ];
+  String statusText = "Starting AR session...";
+  int objectCount = 0;
+  bool isARReady = false;
+  bool isInitializing = true;
+  Timer? _statusTimer;
+  List<String> placedNodeNames = []; // Track placed nodes
+  List<ARPlaneAnchor> placedAnchors = []; // Track placed anchors
 
-  List<Plant> placedPlants = [];
-  Plant? selectedPlant;
-  final GeminiService _geminiService = GeminiService('YOUR_GEMINI_API_KEY');
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Add a timer to update status during initialization
+    _statusTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (isInitializing && mounted) {
+        setState(() {
+          if (statusText.contains("Starting")) {
+            statusText = "Initializing camera and sensors...";
+          } else if (statusText.contains("Initializing")) {
+            statusText = "Detecting environment...";
+          } else {
+            statusText = "Point camera at textured flat surfaces";
+          }
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
 
   @override
   void dispose() {
-    arCoreController?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _statusTimer?.cancel();
+    _cleanupAR();
     super.dispose();
   }
 
-  void onArCoreViewCreated(ArCoreController controller) {
-    arCoreController = controller;
-    arCoreController?.onPlaneTap = _handlePlaneTopTap;
-    arCoreController?.onNodeTap = (name) {
-      final plant = placedPlants.firstWhere(
-        (p) => p.id == name,
-        orElse: () => placedPlants.first,
-      );
-      _onPlantTap(plant);
-    };
+  void _cleanupAR() {
+    // Only dispose the session manager
+    arSessionManager?.dispose();
   }
 
-  void _handlePlaneTopTap(List<ArCoreHitTestResult> hits) {
-    if (hits.isEmpty || selectedPlant == null) return;
-    _onPlacePlant(hits.first);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App lifecycle management - basic implementation
+    if (state == AppLifecycleState.paused) {
+      print("App paused - AR session may be affected");
+    } else if (state == AppLifecycleState.resumed) {
+      print("App resumed");
+    }
   }
 
-  Future<void> _onPlantTap(Plant plant) async {
+  void onARViewCreated(
+    ARSessionManager arSessionManager,
+    ARObjectManager arObjectManager,
+    ARAnchorManager arAnchorManager,
+    ARLocationManager arLocationManager,
+  ) async {
+    this.arSessionManager = arSessionManager;
+    this.arObjectManager = arObjectManager;
+    this.arAnchorManager = arAnchorManager;
+    this.arLocationManager = arLocationManager;
+
+    print("AR View Created - Starting initialization...");
+
     try {
-      if (plant.medicalBenefits == null) {
-        final benefits = await _geminiService.getMedicalBenefits(plant.name);
+      // Initialize AR session with optimized settings
+      await this.arSessionManager!.onInitialize(
+        showFeaturePoints: true,
+        showPlanes: true,
+        showWorldOrigin: false, // Disable to reduce visual clutter
+        handlePans: false,
+        handleRotation: false,
+        handleTaps: true,
+      );
+
+      // Initialize object manager
+      await this.arObjectManager!.onInitialize();
+
+      // Set up callbacks
+      this.arSessionManager!.onPlaneOrPointTap = onPlaneTap;
+      
+      // Wait a moment for AR to fully initialize
+      await Future.delayed(const Duration(seconds: 2));
+
+      setState(() {
+        isARReady = true;
+        isInitializing = false;
+        statusText = "AR Ready! Point at flat surfaces and tap to place objects";
+      });
+
+      print("AR initialization completed successfully");
+      
+    } catch (e) {
+      print("AR initialization error: $e");
+      setState(() {
+        statusText = "AR failed to initialize: $e";
+        isInitializing = false;
+      });
+    }
+  }
+
+  Future<void> onPlaneTap(List<dynamic> hitTestResults) async {
+    print("Tap detected! Processing ${hitTestResults.length} hit results");
+    
+    if (!isARReady) {
+      setState(() {
+        statusText = "AR is still initializing, please wait...";
+      });
+      return;
+    }
+
+    if (hitTestResults.isEmpty) {
+      setState(() {
+        statusText = "No surface found - try pointing at a flat, textured surface";
+      });
+      
+      // Reset status after a delay
+      Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            statusText = "Point at flat surfaces and tap to place objects";
+          });
+        }
+      });
+      return;
+    }
+
+    setState(() {
+      statusText = "Surface detected! Placing object...";
+    });
+
+    try {
+      // Use the first hit result
+      var hitResult = hitTestResults.first;
+      print("Hit result transform: ${hitResult.worldTransform}");
+      
+      // Create anchor with the hit test result
+      var anchor = ARPlaneAnchor(transformation: hitResult.worldTransform);
+      bool? didAddAnchor = await arAnchorManager!.addAnchor(anchor);
+      
+      print("Anchor added: $didAddAnchor");
+      
+      if (didAddAnchor == true) {
+        // Create a colorful cube instead of sphere for better visibility
+        var node = ARNode(
+          type: NodeType.webGLB,
+          uri: "https://github.com/KhronosGroup/glTF-Sample-Models/raw/master/2.0/Box/glTF-Binary/Box.glb",
+          scale: vector_math.Vector3(0.1, 0.1, 0.1), // Smaller scale
+          position: vector_math.Vector3(0.0, 0.05, 0.0), // Slightly elevated
+          rotation: vector_math.Vector4(0.0, 1.0, 0.0, 0.0),
+          name: "box_$objectCount",
+        );
+
+        bool? didAddNode = await arObjectManager!.addNode(node, planeAnchor: anchor);
+        print("Node added: $didAddNode");
+        
+        if (didAddNode == true) {
+          // Track the placed node and anchor
+          placedNodeNames.add(node.name);
+          placedAnchors.add(anchor);
+          
+          setState(() {
+            objectCount++;
+            statusText = "Success! Object #$objectCount placed";
+          });
+          
+          // Reset status after celebration
+          Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                statusText = "Tap on surfaces to place more objects";
+              });
+            }
+          });
+          
+          print("Successfully placed object #$objectCount");
+        } else {
+          setState(() {
+            statusText = "Failed to place object - try again";
+          });
+        }
+      } else {
         setState(() {
-          plant.medicalBenefits = benefits;
+          statusText = "Could not anchor to surface - try a different spot";
         });
       }
+    } catch (e) {
+      print("Error in onPlaneTap: $e");
+      setState(() {
+        statusText = "Error placing object: ${e.toString()}";
+      });
+    }
+  }
 
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: Text(plant.name),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Medical Benefits:'),
-                  SizedBox(height: 8),
-                  Text(plant.medicalBenefits ?? 'Loading...'),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Close'),
+  Widget _buildStatusOverlay() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 10,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isARReady ? Icons.check_circle : Icons.hourglass_empty,
+                  color: isARReady ? Colors.green : Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    statusText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.left,
+                  ),
                 ),
               ],
             ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load medical benefits')),
-      );
-    }
+            if (isARReady) ...[
+              const SizedBox(height: 12),
+              const Text(
+                "Tips for better detection:",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "• Ensure good lighting\n• Use textured surfaces (avoid plain white)\n• Move device slowly to scan\n• Try tables, floors, or books",
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.left,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
-  void _onPlacePlant(ArCoreHitTestResult hit) {
-    if (selectedPlant == null || arCoreController == null) return;
-
-    final newPlant = Plant(
-      id: DateTime.now().toString(),
-      name: selectedPlant!.name,
-      model3dPath: selectedPlant!.model3dPath,
-      x: hit.pose.translation.x,
-      y: hit.pose.translation.y,
-      z: hit.pose.translation.z,
-    );
-
-    try {
-      arCoreController?.addArCoreNodeWithAnchor(
-        ArCoreNode(
-          name: newPlant.id,
-          shape: ArCoreSphere(
-            materials: [
-              ArCoreMaterial(
-                color: material.Colors.green,
-              )
-            ],
-            radius: 0.1,
-          ),
-          position: Vector3(newPlant.x, newPlant.y, newPlant.z),
-          rotation: Vector4(0, 0, 0, 0),
-          scale: Vector3(0.2, 0.2, 0.2),
+  Widget _buildObjectCounter() {
+    return Positioned(
+      bottom: MediaQuery.of(context).padding.bottom + 20,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blue.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-      );
-
-      setState(() {
-        placedPlants.add(newPlant);
-        selectedPlant = null;
-      });
-    } catch (e) {
-      print('Error placing plant: $e');
-    }
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.view_in_ar, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              "Objects Placed: $objectCount",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Virtual Garden'),
-        backgroundColor: Color(0xFF2E7D32),
-        foregroundColor: material.Colors.white,
+        title: const Text('AR Surface Detection'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          if (objectCount > 0)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () async {
+                try {
+                  // Remove all tracked nodes by recreating them as ARNode objects
+                  for (int i = 0; i < placedNodeNames.length; i++) {
+                    String nodeName = placedNodeNames[i];
+                    // Create a temporary ARNode to pass to removeNode
+                    var nodeToRemove = ARNode(
+                      type: NodeType.webGLB,
+                      uri: "", // Empty URI for removal
+                      name: nodeName,
+                    );
+                    await arObjectManager?.removeNode(nodeToRemove);
+                  }
+                  
+                  // Remove all tracked anchors
+                  for (ARPlaneAnchor anchor in placedAnchors) {
+                    await arAnchorManager?.removeAnchor(anchor);
+                  }
+                  
+                  // Clear our tracking lists
+                  placedNodeNames.clear();
+                  placedAnchors.clear();
+                  
+                  setState(() {
+                    objectCount = 0;
+                    statusText = "All objects cleared - tap surfaces to place new ones";
+                  });
+                  
+                  print("Successfully cleared all objects");
+                } catch (e) {
+                  print("Error clearing objects: $e");
+                  setState(() {
+                    statusText = "Error clearing objects - try restarting";
+                  });
+                }
+              },
+              tooltip: 'Clear all objects',
+            ),
+        ],
       ),
       body: Stack(
         children: [
-          ArCoreView(
-            onArCoreViewCreated: onArCoreViewCreated,
-            enableTapRecognizer: true,
-            enableUpdateListener: true,
+          // AR View
+          ARView(
+            onARViewCreated: onARViewCreated,
+            planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
           ),
-          if (selectedPlant != null)
-            Center(
-              child: Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: material.Colors.white.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Tap on a surface to place ${selectedPlant!.name}',
-                  style: TextStyle(
-                    color: material.Colors.green,
-                    fontWeight: FontWeight.bold,
+          
+          // Status overlay
+          _buildStatusOverlay(),
+          
+          // Object counter
+          _buildObjectCounter(),
+          
+          // Loading indicator during initialization
+          if (isInitializing)
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                ),
-              ),
-            ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 100,
-              color: material.Colors.black54,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: availablePlants.length,
-                padding: EdgeInsets.all(8),
-                itemBuilder: (context, index) {
-                  final plant = availablePlants[index];
-                  return GestureDetector(
-                    onTap: () => setState(() => selectedPlant = plant),
-                    child: Container(
-                      width: 80,
-                      margin: EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color:
-                            selectedPlant?.id == plant.id
-                                ? material.Colors.green.withOpacity(0.3)
-                                : material.Colors.white24,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.local_florist, color: material.Colors.white),
-                          SizedBox(height: 4),
-                          Text(
-                            plant.name,
-                            style: TextStyle(color: material.Colors.white, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                  SizedBox(height: 16),
+                  Text(
+                    "Initializing AR...",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
-          ),
         ],
       ),
     );
-  
   }
 }

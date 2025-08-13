@@ -25,14 +25,19 @@ class _ImprovedARTestState extends State<ImprovedARTest>
   ARAnchorManager? arAnchorManager;
   ARLocationManager? arLocationManager;
 
-  String statusText = "Starting AR session...";
+  // Use ValueNotifier for a more efficient state update
+  final ValueNotifier<String> _statusNotifier = ValueNotifier(
+    "Starting AR session...",
+  );
   int objectCount = 0;
   bool isARReady = false;
   bool isInitializing = true;
   Timer? _statusTimer;
-  List<String> placedNodeNames = []; // Track placed nodes
   List<ARPlaneAnchor> placedAnchors = []; // Track placed anchors
-  String selectedPlant = "neem"; // Default plant selection will remain neem
+  String selectedPlant = "neem"; // Default plant selection
+
+  // Add a model cache
+  final Map<String, ARNode> _modelCache = {};
 
   @override
   void initState() {
@@ -42,15 +47,13 @@ class _ImprovedARTestState extends State<ImprovedARTest>
     // Add a timer to update status during initialization
     _statusTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (isInitializing && mounted) {
-        setState(() {
-          if (statusText.contains("Starting")) {
-            statusText = "Initializing camera and sensors...";
-          } else if (statusText.contains("Initializing")) {
-            statusText = "Detecting environment...";
-          } else {
-            statusText = "Point camera at textured flat surfaces";
-          }
-        });
+        if (_statusNotifier.value.contains("Starting")) {
+          _statusNotifier.value = "Initializing camera and sensors...";
+        } else if (_statusNotifier.value.contains("Initializing")) {
+          _statusNotifier.value = "Detecting environment...";
+        } else {
+          _statusNotifier.value = "Point camera at textured flat surfaces";
+        }
       } else {
         timer.cancel();
       }
@@ -62,17 +65,24 @@ class _ImprovedARTestState extends State<ImprovedARTest>
     WidgetsBinding.instance.removeObserver(this);
     _statusTimer?.cancel();
     _cleanupAR();
+    _statusNotifier.dispose(); // Dispose of the ValueNotifier
     super.dispose();
   }
 
-  void _cleanupAR() {
-    // Only dispose the session manager
+  Future<void> _cleanupAR() async {
+    // Clear all nodes and anchors
+    if (arObjectManager != null && arAnchorManager != null) {
+      for (final anchor in placedAnchors) {
+        await arAnchorManager!.removeAnchor(anchor);
+      }
+    }
+    placedAnchors.clear();
+    objectCount = 0;
     arSessionManager?.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // App lifecycle management - basic implementation
     if (state == AppLifecycleState.paused) {
       print("App paused - AR session may be affected");
     } else if (state == AppLifecycleState.resumed) {
@@ -94,181 +104,179 @@ class _ImprovedARTestState extends State<ImprovedARTest>
     print("AR View Created - Starting initialization...");
 
     try {
-      // Initialize AR session with optimized settings
       await this.arSessionManager!.onInitialize(
         showFeaturePoints: true,
         showPlanes: true,
-        showWorldOrigin: false, // Disable to reduce visual clutter
+        showWorldOrigin: false,
         handlePans: false,
         handleRotation: false,
         handleTaps: true,
       );
 
-      // Initialize object manager
       await this.arObjectManager!.onInitialize();
-
-      // Set up callbacks
       this.arSessionManager!.onPlaneOrPointTap = onPlaneTap;
 
-      // Wait a moment for AR to fully initialize
       await Future.delayed(const Duration(seconds: 2));
 
       setState(() {
         isARReady = true;
         isInitializing = false;
-        statusText =
-            "AR Ready! Point at flat surfaces and tap to place ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
       });
+      _statusNotifier.value =
+          "AR Ready! Tap to place a ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plant";
 
       print("AR initialization completed successfully");
     } catch (e) {
       print("AR initialization error: $e");
       setState(() {
-        statusText = "AR failed to initialize: $e";
         isInitializing = false;
       });
+      _statusNotifier.value = "AR failed to initialize: $e";
     }
   }
 
   Future<void> onPlaneTap(List<dynamic> hitTestResults) async {
-    print("Tap detected! Processing ${hitTestResults.length} hit results");
-
     if (!isARReady) {
-      setState(() {
-        statusText = "AR is still initializing, please wait...";
-      });
+      _statusNotifier.value = "AR is still initializing, please wait...";
       return;
     }
 
     if (hitTestResults.isEmpty) {
-      setState(() {
-        statusText =
-            "No surface found - try pointing at a flat, textured surface";
-      });
-
-      // Reset status after a delay
+      _statusNotifier.value =
+          "No surface found - try pointing at a flat, textured surface";
       Timer(const Duration(seconds: 3), () {
         if (mounted) {
-          setState(() {
-            statusText =
-                "Point at flat surfaces and tap to place ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
-          });
+          _statusNotifier.value =
+              "Point at flat surfaces and tap to place plants";
         }
       });
       return;
     }
 
-    setState(() {
-      statusText = "Surface detected! Placing object...";
-    });
+    _statusNotifier.value = "Surface detected! Placing object...";
 
     try {
-      // Use the first hit result
       var hitResult = hitTestResults.first;
-      print("Hit result transform: ${hitResult.worldTransform}");
-
-      // Create anchor with the hit test result
       var anchor = ARPlaneAnchor(transformation: hitResult.worldTransform);
       bool? didAddAnchor = await arAnchorManager!.addAnchor(anchor);
-
-      print("Anchor added: $didAddAnchor");
 
       if (didAddAnchor == true) {
         String modelUrl;
         String plantName;
         vector_math.Vector3 scale;
-        vector_math.Vector3 position;
 
         switch (selectedPlant) {
           case "neem":
-            modelUrl = "assets/neem.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/neem.glb";
             plantName = "Neem Plant";
-            scale = vector_math.Vector3(0.15, 0.15, 0.15);
-            position = vector_math.Vector3(0.0, 0.0, 0.0);
+            scale = vector_math.Vector3(0.8, 0.15, 0.15);
             break;
           case "tulsi":
-            modelUrl = "assets/basil.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/basil.glb";
             plantName = "Tulsi Plant";
-            scale = vector_math.Vector3(0.1, 0.1, 0.1);
-            position = vector_math.Vector3(0.0, 0.02, 0.0);
+            scale = vector_math.Vector3(0.4, 0.1, 0.1);
             break;
           case "rosemary":
-            modelUrl = "assets/rosemary.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/rosemary.glb";
             plantName = "Rosemary Plant";
-            scale = vector_math.Vector3(0.1, 0.1, 0.1);
-            position = vector_math.Vector3(0.0, 0.0, 0.0);
+            scale = vector_math.Vector3(0.3, 0.1, 0.1);
             break;
           case "eucalyptus":
-            modelUrl = "assets/eucalyptus.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/eucalyptus.glb";
             plantName = "Eucalyptus Plant";
-            scale = vector_math.Vector3(0.15, 0.15, 0.15);
-            position = vector_math.Vector3(0.0, 0.0, 0.0);
+            scale = vector_math.Vector3(0.4, 0.15, 0.15);
             break;
           case "aloe_vera":
-            modelUrl = "assets/aloe_vera.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/aloe_vera.glb";
             plantName = "Aloe Vera Plant";
-            scale = vector_math.Vector3(0.08, 0.08, 0.08);
-            position = vector_math.Vector3(0.0, 0.0, 0.0);
+            scale = vector_math.Vector3(0.3, 0.08, 0.08);
             break;
           default:
-            modelUrl = "assets/neem.glb";
+            modelUrl =
+                "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/neem.glb";
             plantName = "Plant";
-            scale = vector_math.Vector3(0.1, 0.1, 0.1);
-            position = vector_math.Vector3(0.0, 0.0, 0.0);
+            scale = vector_math.Vector3(0.4, 0.1, 0.1);
+            break;
         }
 
-        // Create plant node
-        var node = ARNode(
-          type: NodeType.localGLTF2,
-          uri: modelUrl,
-          scale: scale,
-          position: position,
-          rotation: vector_math.Vector4(0.0, 1.0, 0.0, 0.0),
-          name: "${selectedPlant}_$objectCount",
+        var node = await _loadModel(
+          modelUrl,
+          "${selectedPlant}_$objectCount",
+          scale,
         );
 
         bool? didAddNode = await arObjectManager!.addNode(
-          node,
+          node!,
           planeAnchor: anchor,
         );
-        print("Node added: $didAddNode");
 
         if (didAddNode == true) {
-          // Track the placed node and anchor
-          placedNodeNames.add(node.name);
           placedAnchors.add(anchor);
-
           setState(() {
             objectCount++;
-            statusText = "Success! $plantName #$objectCount placed";
           });
+          _statusNotifier.value = "Success! $plantName #$objectCount placed";
 
-          // Reset status after celebration
           Timer(const Duration(seconds: 2), () {
             if (mounted) {
-              setState(() {
-                statusText =
-                    "Tap on surfaces to place more ${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} plants";
-              });
+              _statusNotifier.value = "Tap on surfaces to place more plants";
             }
           });
-
-          print("Successfully placed object #$objectCount");
         } else {
-          setState(() {
-            statusText = "Failed to place object - try again";
-          });
+          _statusNotifier.value = "Failed to place object - try again";
         }
       } else {
-        setState(() {
-          statusText = "Could not anchor to surface - try a different spot";
-        });
+        _statusNotifier.value =
+            "Could not anchor to surface - try a different spot";
       }
     } catch (e) {
       print("Error in onPlaneTap: $e");
-      setState(() {
-        statusText = "Error placing object: ${e.toString()}";
-      });
+      _statusNotifier.value = "Error placing object: ${e.toString()}";
+    }
+  }
+
+  Future<ARNode?> _loadModel(
+    String modelUrl,
+    String nodeName,
+    vector_math.Vector3 scale,
+  ) async {
+    try {
+      // Check if model is cached
+      if (_modelCache.containsKey(modelUrl)) {
+        print("Using cached model for $nodeName");
+        final cachedNode = _modelCache[modelUrl]!;
+        return ARNode(
+          type: cachedNode.type,
+          uri: cachedNode.uri,
+          scale: scale,
+          position: vector_math.Vector3(0.0, 0.0, 0.0),
+          rotation: vector_math.Vector4(0.0, 1.0, 0.0, 0.0),
+          name: nodeName,
+        );
+      }
+
+      print("Loading model from URL: $modelUrl");
+      var node = ARNode(
+        type: NodeType.webGLB,
+        uri: modelUrl,
+        scale: scale,
+        position: vector_math.Vector3(0.0, 0.0, 0.0),
+        rotation: vector_math.Vector4(0.0, 1.0, 0.0, 0.0),
+        name: nodeName,
+      );
+
+      _modelCache[modelUrl] = node;
+      print("Model loaded and cached successfully: $nodeName");
+      return node;
+    } catch (e) {
+      print("Error loading model: $e");
+      _statusNotifier.value = "Error loading model: $e";
+      return null;
     }
   }
 
@@ -277,71 +285,112 @@ class _ImprovedARTestState extends State<ImprovedARTest>
       top: MediaQuery.of(context).padding.top + 10,
       left: 16,
       right: 16,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isARReady ? Icons.check_circle : Icons.hourglass_empty,
-                  color: isARReady ? Colors.green : Colors.orange,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    statusText,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.left,
-                  ),
+      child: ValueListenableBuilder<String>(
+        valueListenable: _statusNotifier,
+        builder: (context, statusText, child) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
-            if (isARReady) ...[
-              const SizedBox(height: 12),
-              const Text(
-                "Tips for better detection:",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isARReady ? Icons.check_circle : Icons.hourglass_empty,
+                      color: isARReady ? Colors.green : Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        statusText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.left,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                "• Ensure good lighting\n• Use textured surfaces (avoid plain white)\n• Move device slowly to scan\n• Try tables, floors, or books",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-                textAlign: TextAlign.left,
-              ),
-            ],
-          ],
-        ),
+                if (isARReady) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Tips for better detection:",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "• Ensure good lighting\n• Use textured surfaces (avoid plain white)\n• Move device slowly to scan\n• Try tables, floors, or books",
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.left,
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildObjectCounter() {
+    // Helper function to get proper plant display name
+    String getPlantDisplayName() {
+      switch (selectedPlant) {
+        case "neem":
+          return "Neem";
+        case "tulsi":
+          return "Tulsi";
+        case "rosemary":
+          return "Rosemary";
+        case "eucalyptus":
+          return "Eucalyptus";
+        case "aloe_vera":
+          return "Aloe Vera";
+        default:
+          return "Plant";
+      }
+    }
+
+    // Helper function to get proper plant icon
+    IconData getPlantIcon() {
+      switch (selectedPlant) {
+        case "neem":
+          return Icons.park;
+        case "tulsi":
+          return Icons.local_florist;
+        case "rosemary":
+          return Icons.spa;
+        case "eucalyptus":
+          return Icons.nature;
+        case "aloe_vera":
+          return Icons.eco;
+        default:
+          return Icons.local_florist;
+      }
+    }
+
     return Positioned(
       bottom: MediaQuery.of(context).padding.bottom + 80,
       left: 16,
@@ -351,26 +400,18 @@ class _ImprovedARTestState extends State<ImprovedARTest>
         decoration: BoxDecoration(
           color: Colors.green.withOpacity(0.9),
           borderRadius: BorderRadius.circular(25),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.green.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
+          boxShadow: const [
+            BoxShadow(color: Colors.green, blurRadius: 8, offset: Offset(0, 2)),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              selectedPlant == "neem" ? Icons.park : Icons.local_florist,
-              color: Colors.white,
-              size: 20,
-            ),
+            Icon(getPlantIcon(), color: Colors.white, size: 20),
             const SizedBox(width: 8),
             Text(
-              "${selectedPlant == 'neem' ? 'Neem' : 'Tulsi'} Plants: $objectCount",
+              "${getPlantDisplayName()} Plants: $objectCount",
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -388,7 +429,7 @@ class _ImprovedARTestState extends State<ImprovedARTest>
       bottom: MediaQuery.of(context).padding.bottom + 20,
       left: 16,
       right: 16,
-      child: Container(
+      child: SizedBox(
         height: 100,
         child: ListView(
           scrollDirection: Axis.horizontal,
@@ -412,22 +453,22 @@ class _ImprovedARTestState extends State<ImprovedARTest>
         onTap: () {
           setState(() {
             selectedPlant = plantType;
-            statusText = "$label selected - tap surfaces to place plants";
           });
+          _statusNotifier.value =
+              "$label selected - tap surfaces to place plants";
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color:
-                selectedPlant == plantType
-                    ? Colors.green
-                    : Colors.white.withOpacity(0.95),
+            color: selectedPlant == plantType
+                ? Colors.green
+                : Colors.white.withOpacity(0.95),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black26,
                 blurRadius: 4,
-                offset: const Offset(0, 2),
+                offset: Offset(0, 2),
               ),
             ],
           ),
@@ -443,8 +484,9 @@ class _ImprovedARTestState extends State<ImprovedARTest>
               Text(
                 label,
                 style: TextStyle(
-                  color:
-                      selectedPlant == plantType ? Colors.white : Colors.green,
+                  color: selectedPlant == plantType
+                      ? Colors.white
+                      : Colors.green,
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
@@ -471,39 +513,21 @@ class _ImprovedARTestState extends State<ImprovedARTest>
               icon: const Icon(Icons.refresh),
               onPressed: () async {
                 try {
-                  // Remove all tracked nodes by recreating them as ARNode objects
-                  for (int i = 0; i < placedNodeNames.length; i++) {
-                    String nodeName = placedNodeNames[i];
-                    // Create a temporary ARNode to pass to removeNode
-                    var nodeToRemove = ARNode(
-                      type: NodeType.localGLTF2,
-                      uri: "", // Empty URI for removal
-                      name: nodeName,
-                    );
-                    await arObjectManager?.removeNode(nodeToRemove);
-                  }
-
-                  // Remove all tracked anchors
+                  // This is the more efficient way to remove all objects
                   for (ARPlaneAnchor anchor in placedAnchors) {
                     await arAnchorManager?.removeAnchor(anchor);
                   }
-
-                  // Clear our tracking lists
-                  placedNodeNames.clear();
                   placedAnchors.clear();
-
                   setState(() {
                     objectCount = 0;
-                    statusText =
-                        "All plants cleared - tap surfaces to place new ones";
                   });
-
+                  _statusNotifier.value =
+                      "All plants cleared - tap surfaces to place new ones";
                   print("Successfully cleared all objects");
                 } catch (e) {
                   print("Error clearing objects: $e");
-                  setState(() {
-                    statusText = "Error clearing objects - try restarting";
-                  });
+                  _statusNotifier.value =
+                      "Error clearing objects - try restarting";
                 }
               },
               tooltip: 'Clear all plants',

@@ -119,7 +119,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
       final plants = ref.read(plantsProvider);
       final plantInfo = plants.firstWhere((p) => p.id == selectedPlant);
       statusNotifier.updateStatus(
-        "AR Ready! Tap to place a ${plantInfo.displayName} plant",
+        "AR Ready! Tap to place ${plantInfo.displayName} or use info buttons for plant details",
       );
 
       print("AR initialization completed successfully");
@@ -207,7 +207,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
           Timer(const Duration(seconds: 3), () {
             if (mounted) {
               statusNotifier.updateStatus(
-                "Tap on surfaces to place more plants, or tap plants for details",
+                "Tap surfaces to place plants, tap info buttons for details, or tap plants for live info",
               );
             }
           });
@@ -304,6 +304,70 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
         );
         statusNotifier.updateStatus("Error loading plant details");
       }
+    }
+  }
+
+  // Method to show plant info when info button is tapped
+  Future<void> _showPlantInfo(PlantInfo plant) async {
+    final plantDetailsNotifier = ref.read(plantDetailsProvider.notifier);
+    final showPlantDetailsNotifier = ref.read(
+      showPlantDetailsProvider.notifier,
+    );
+    final statusNotifier = ref.read(statusProvider.notifier);
+
+    statusNotifier.updateStatus("Loading ${plant.displayName} information...");
+    showPlantDetailsNotifier.show();
+
+    // Set loading state
+    plantDetailsNotifier.setPlantDetails(
+      PlantDetails(
+        name: plant.displayName,
+        benefits: '',
+        usage: '',
+        description: '',
+        isLoading: true,
+      ),
+    );
+
+    try {
+      final geminiService = GeminiService();
+
+      final plantDetailsResponse = await geminiService.getPlantDetails(
+        plant.displayName,
+      );
+
+      plantDetailsNotifier.setPlantDetails(
+        PlantDetails(
+          name: plant.displayName,
+          benefits: plantDetailsResponse.benefits,
+          usage: plantDetailsResponse.usage,
+          description: plantDetailsResponse.description,
+          isLoading: false,
+        ),
+      );
+
+      statusNotifier.updateStatus("${plant.displayName} information loaded!");
+
+      Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          statusNotifier.updateStatus(
+            "Tap info buttons for plant details or surfaces to place plants",
+          );
+        }
+      });
+    } catch (e) {
+      print("Error loading plant information: $e");
+      plantDetailsNotifier.setPlantDetails(
+        PlantDetails(
+          name: plant.displayName,
+          benefits: "Unable to load benefits information",
+          usage: "Unable to load usage information",
+          description: "Unable to load description",
+          isLoading: false,
+          error: e.toString(),
+        ),
+      );
+      statusNotifier.updateStatus("Error loading plant information");
     }
   }
 
@@ -521,58 +585,96 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
         final selectedPlantNotifier = ref.read(selectedPlantProvider.notifier);
         final statusNotifier = ref.read(statusProvider.notifier);
 
-        return GestureDetector(
-          onTap: () {
-            selectedPlantNotifier.selectPlant(plant.id);
-            statusNotifier.updateStatus(
-              "${plant.displayName} selected - tap surfaces to place plants",
-            );
-          },
-          child: Container(
-            width: 70,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              color: selectedPlant == plant.id
-                  ? Colors.green
-                  : Colors.white.withOpacity(0.95),
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 4,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  plant.icon,
-                  color: selectedPlant == plant.id
-                      ? Colors.white
-                      : Colors.green,
-                  size: 20,
-                ),
-                const SizedBox(height: 4),
-                Flexible(
-                  child: Text(
-                    plant.displayName,
-                    style: TextStyle(
-                      color: selectedPlant == plant.id
-                          ? Colors.white
-                          : Colors.green,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 10,
+        return Container(
+          width: 110, // Increased width to accommodate info button
+          child: Row(
+            children: [
+              // Main plant selection button
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    selectedPlantNotifier.selectPlant(plant.id);
+                    statusNotifier.updateStatus(
+                      "${plant.displayName} selected - tap surfaces to place or info button for details",
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      color: selectedPlant == plant.id
+                          ? Colors.green
+                          : Colors.white.withOpacity(0.95),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(15),
+                        bottomLeft: Radius.circular(15),
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          plant.icon,
+                          color: selectedPlant == plant.id
+                              ? Colors.white
+                              : Colors.green,
+                          size: 20,
+                        ),
+                        const SizedBox(height: 4),
+                        Flexible(
+                          child: Text(
+                            plant.displayName,
+                            style: TextStyle(
+                              color: selectedPlant == plant.id
+                                  ? Colors.white
+                                  : Colors.green,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              // Info button
+              GestureDetector(
+                onTap: () => _showPlantInfo(plant),
+                child: Container(
+                  width: 32,
+                  height: 64, // Match the height of the plant button
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.9),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(15),
+                      bottomRight: Radius.circular(15),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.info, color: Colors.white, size: 16),
+                ),
+              ),
+            ],
           ),
         );
       },

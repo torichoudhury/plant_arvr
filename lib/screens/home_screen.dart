@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'virtual_garden_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:plant_arvr/screens/virtual_garden_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(

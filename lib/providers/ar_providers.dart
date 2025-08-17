@@ -12,6 +12,60 @@ import 'dart:async';
 import 'package:vector_math/vector_math_64.dart' as vector_math;
 
 // Models
+class PlacedPlant {
+  final String id;
+  final String plantType;
+  final String nodeName;
+  final ARPlaneAnchor anchor;
+  final vector_math.Vector3 position;
+  final PlantInfo plantInfo;
+
+  const PlacedPlant({
+    required this.id,
+    required this.plantType,
+    required this.nodeName,
+    required this.anchor,
+    required this.position,
+    required this.plantInfo,
+  });
+}
+
+class PlantDetails {
+  final String name;
+  final String benefits;
+  final String usage;
+  final String description;
+  final bool isLoading;
+  final String? error;
+
+  const PlantDetails({
+    required this.name,
+    required this.benefits,
+    required this.usage,
+    required this.description,
+    this.isLoading = false,
+    this.error,
+  });
+
+  PlantDetails copyWith({
+    String? name,
+    String? benefits,
+    String? usage,
+    String? description,
+    bool? isLoading,
+    String? error,
+  }) {
+    return PlantDetails(
+      name: name ?? this.name,
+      benefits: benefits ?? this.benefits,
+      usage: usage ?? this.usage,
+      description: description ?? this.description,
+      isLoading: isLoading ?? this.isLoading,
+      error: error ?? this.error,
+    );
+  }
+}
+
 class ARState {
   final ARSessionManager? arSessionManager;
   final ARObjectManager? arObjectManager;
@@ -75,21 +129,41 @@ final statusProvider = StateNotifierProvider<StatusNotifier, String>((ref) {
   return StatusNotifier();
 });
 
-final selectedPlantProvider = StateNotifierProvider<SelectedPlantNotifier, String>((ref) {
-  return SelectedPlantNotifier();
-});
+final selectedPlantProvider =
+    StateNotifierProvider<SelectedPlantNotifier, String>((ref) {
+      return SelectedPlantNotifier();
+    });
 
-final objectCountProvider = StateNotifierProvider<ObjectCountNotifier, int>((ref) {
+final objectCountProvider = StateNotifierProvider<ObjectCountNotifier, int>((
+  ref,
+) {
   return ObjectCountNotifier();
 });
 
-final placedAnchorsProvider = StateNotifierProvider<PlacedAnchorsNotifier, List<ARPlaneAnchor>>((ref) {
-  return PlacedAnchorsNotifier();
-});
+final placedAnchorsProvider =
+    StateNotifierProvider<PlacedAnchorsNotifier, List<ARPlaneAnchor>>((ref) {
+      return PlacedAnchorsNotifier();
+    });
 
-final modelCacheProvider = StateNotifierProvider<ModelCacheNotifier, Map<String, ARNode>>((ref) {
-  return ModelCacheNotifier();
-});
+final placedPlantsProvider =
+    StateNotifierProvider<PlacedPlantsNotifier, List<PlacedPlant>>((ref) {
+      return PlacedPlantsNotifier();
+    });
+
+final plantDetailsProvider =
+    StateNotifierProvider<PlantDetailsNotifier, PlantDetails?>((ref) {
+      return PlantDetailsNotifier();
+    });
+
+final showPlantDetailsProvider =
+    StateNotifierProvider<ShowPlantDetailsNotifier, bool>((ref) {
+      return ShowPlantDetailsNotifier();
+    });
+
+final modelCacheProvider =
+    StateNotifierProvider<ModelCacheNotifier, Map<String, ARNode>>((ref) {
+      return ModelCacheNotifier();
+    });
 
 final plantsProvider = Provider<List<PlantInfo>>((ref) {
   return [
@@ -97,7 +171,8 @@ final plantsProvider = Provider<List<PlantInfo>>((ref) {
       id: "neem",
       name: "neem",
       displayName: "Neem",
-      modelUrl: "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/neem.glb",
+      modelUrl:
+          "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/neem.glb",
       icon: Icons.park,
       scale: vector_math.Vector3(0.8, 0.15, 0.15),
     ),
@@ -105,7 +180,8 @@ final plantsProvider = Provider<List<PlantInfo>>((ref) {
       id: "tulsi",
       name: "tulsi",
       displayName: "Tulsi",
-      modelUrl: "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/basil.glb",
+      modelUrl:
+          "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/basil.glb",
       icon: Icons.local_florist,
       scale: vector_math.Vector3(0.4, 0.1, 0.1),
     ),
@@ -113,7 +189,8 @@ final plantsProvider = Provider<List<PlantInfo>>((ref) {
       id: "rosemary",
       name: "rosemary",
       displayName: "Rosemary",
-      modelUrl: "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/rosemary.glb",
+      modelUrl:
+          "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/rosemary.glb",
       icon: Icons.spa,
       scale: vector_math.Vector3(0.3, 0.1, 0.1),
     ),
@@ -121,7 +198,8 @@ final plantsProvider = Provider<List<PlantInfo>>((ref) {
       id: "eucalyptus",
       name: "eucalyptus",
       displayName: "Eucalyptus",
-      modelUrl: "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/eucalyptus.glb",
+      modelUrl:
+          "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/eucalyptus.glb",
       icon: Icons.nature,
       scale: vector_math.Vector3(0.4, 0.15, 0.15),
     ),
@@ -129,7 +207,8 @@ final plantsProvider = Provider<List<PlantInfo>>((ref) {
       id: "aloe_vera",
       name: "aloe_vera",
       displayName: "Aloe Vera",
-      modelUrl: "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/aloe_vera.glb",
+      modelUrl:
+          "https://raw.githubusercontent.com/torichoudhury/plant_arvr/master/assets/aloe_vera.glb",
       icon: Icons.eco,
       scale: vector_math.Vector3(0.3, 0.08, 0.08),
     ),
@@ -245,5 +324,65 @@ class ModelCacheNotifier extends StateNotifier<Map<String, ARNode>> {
 
   ARNode? getCachedModel(String url) {
     return state[url];
+  }
+}
+
+class PlacedPlantsNotifier extends StateNotifier<List<PlacedPlant>> {
+  PlacedPlantsNotifier() : super([]);
+
+  void addPlacedPlant(PlacedPlant plant) {
+    state = [...state, plant];
+  }
+
+  void clearPlacedPlants() {
+    state = [];
+  }
+
+  PlacedPlant? findPlantByNodeName(String nodeName) {
+    try {
+      return state.firstWhere((plant) => plant.nodeName == nodeName);
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
+class PlantDetailsNotifier extends StateNotifier<PlantDetails?> {
+  PlantDetailsNotifier() : super(null);
+
+  void setPlantDetails(PlantDetails details) {
+    state = details;
+  }
+
+  void setLoading(bool isLoading) {
+    if (state != null) {
+      state = state!.copyWith(isLoading: isLoading);
+    }
+  }
+
+  void setError(String error) {
+    if (state != null) {
+      state = state!.copyWith(error: error, isLoading: false);
+    }
+  }
+
+  void clearDetails() {
+    state = null;
+  }
+}
+
+class ShowPlantDetailsNotifier extends StateNotifier<bool> {
+  ShowPlantDetailsNotifier() : super(false);
+
+  void show() {
+    state = true;
+  }
+
+  void hide() {
+    state = false;
+  }
+
+  void toggle() {
+    state = !state;
   }
 }

@@ -11,6 +11,7 @@ import 'package:ar_flutter_plugin_2/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin_2/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin_2/managers/ar_anchor_manager.dart';
 import 'package:plant_arvr/providers/ar_providers.dart';
+import 'package:plant_arvr/services/gemini_service.dart';
 import 'package:vector_math/vector_math_64.dart' as vector_math;
 import 'dart:async';
 
@@ -49,6 +50,11 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     final placedAnchors = ref.read(placedAnchorsProvider);
     final objectCountNotifier = ref.read(objectCountProvider.notifier);
     final placedAnchorsNotifier = ref.read(placedAnchorsProvider.notifier);
+    final placedPlantsNotifier = ref.read(placedPlantsProvider.notifier);
+    final plantDetailsNotifier = ref.read(plantDetailsProvider.notifier);
+    final showPlantDetailsNotifier = ref.read(
+      showPlantDetailsProvider.notifier,
+    );
 
     if (arState.arObjectManager != null && arState.arAnchorManager != null) {
       for (final anchor in placedAnchors) {
@@ -56,6 +62,9 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
       }
     }
     placedAnchorsNotifier.clearAnchors();
+    placedPlantsNotifier.clearPlacedPlants();
+    plantDetailsNotifier.clearDetails();
+    showPlantDetailsNotifier.hide();
     objectCountNotifier.reset();
     arState.arSessionManager?.dispose();
   }
@@ -99,6 +108,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
       await arObjectManager.onInitialize();
       arSessionManager.onPlaneOrPointTap = onPlaneTap;
+      arObjectManager.onNodeTap = onNodeTap;
 
       await Future.delayed(const Duration(seconds: 2));
 
@@ -128,6 +138,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     final objectCount = ref.read(objectCountProvider);
     final objectCountNotifier = ref.read(objectCountProvider.notifier);
     final placedAnchorsNotifier = ref.read(placedAnchorsProvider.notifier);
+    final placedPlantsNotifier = ref.read(placedPlantsProvider.notifier);
 
     if (!arState.isARReady) {
       statusNotifier.updateStatus("AR is still initializing, please wait...");
@@ -157,10 +168,11 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
       if (didAddAnchor == true) {
         final plantInfo = plants.firstWhere((p) => p.id == selectedPlant);
+        final nodeName = "${selectedPlant}_$objectCount";
 
         var node = await _loadModel(
           plantInfo.modelUrl,
-          "${selectedPlant}_$objectCount",
+          nodeName,
           plantInfo.scale,
         );
 
@@ -170,17 +182,32 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
         );
 
         if (didAddNode == true) {
+          // Track the placed plant
+          final placedPlant = PlacedPlant(
+            id: "${selectedPlant}_$objectCount",
+            plantType: selectedPlant,
+            nodeName: nodeName,
+            anchor: anchor,
+            position: vector_math.Vector3(
+              hitResult.worldTransform[12],
+              hitResult.worldTransform[13],
+              hitResult.worldTransform[14],
+            ),
+            plantInfo: plantInfo,
+          );
+
           placedAnchorsNotifier.addAnchor(anchor);
+          placedPlantsNotifier.addPlacedPlant(placedPlant);
           objectCountNotifier.increment();
           final newCount = ref.read(objectCountProvider);
           statusNotifier.updateStatus(
-            "Success! ${plantInfo.displayName} #$newCount placed",
+            "Success! ${plantInfo.displayName} #$newCount placed. Tap on plants to see details.",
           );
 
-          Timer(const Duration(seconds: 2), () {
+          Timer(const Duration(seconds: 3), () {
             if (mounted) {
               statusNotifier.updateStatus(
-                "Tap on surfaces to place more plants",
+                "Tap on surfaces to place more plants, or tap plants for details",
               );
             }
           });
@@ -195,6 +222,88 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     } catch (e) {
       print("Error in onPlaneTap: $e");
       statusNotifier.updateStatus("Error placing object: ${e.toString()}");
+    }
+  }
+
+  Future<void> onNodeTap(List<dynamic> nodes) async {
+    if (nodes.isEmpty) return;
+
+    final tappedNode = nodes.first;
+    final nodeName = tappedNode.name;
+
+    print("Node tapped: $nodeName");
+
+    final placedPlantsNotifier = ref.read(placedPlantsProvider.notifier);
+    final plantDetailsNotifier = ref.read(plantDetailsProvider.notifier);
+    final showPlantDetailsNotifier = ref.read(
+      showPlantDetailsProvider.notifier,
+    );
+    final statusNotifier = ref.read(statusProvider.notifier);
+
+    // Find the tapped plant
+    final tappedPlant = placedPlantsNotifier.findPlantByNodeName(nodeName);
+
+    if (tappedPlant != null) {
+      statusNotifier.updateStatus(
+        "Loading ${tappedPlant.plantInfo.displayName} details...",
+      );
+      showPlantDetailsNotifier.show();
+
+      // Set loading state
+      plantDetailsNotifier.setPlantDetails(
+        PlantDetails(
+          name: tappedPlant.plantInfo.displayName,
+          benefits: '',
+          usage: '',
+          description: '',
+          isLoading: true,
+        ),
+      );
+
+      try {
+        // Get plant details from Gemini - using a dummy API key for now
+        const geminiApiKey = "YOUR_API_KEY_HERE"; // You'll need to replace this
+        final geminiService = GeminiService(geminiApiKey);
+
+        final plantDetailsResponse = await geminiService.getPlantDetails(
+          tappedPlant.plantInfo.displayName,
+        );
+
+        plantDetailsNotifier.setPlantDetails(
+          PlantDetails(
+            name: tappedPlant.plantInfo.displayName,
+            benefits: plantDetailsResponse.benefits,
+            usage: plantDetailsResponse.usage,
+            description: plantDetailsResponse.description,
+            isLoading: false,
+          ),
+        );
+
+        statusNotifier.updateStatus(
+          "${tappedPlant.plantInfo.displayName} details loaded!",
+        );
+
+        Timer(const Duration(seconds: 2), () {
+          if (mounted) {
+            statusNotifier.updateStatus(
+              "Tap plants for details or surfaces to place more",
+            );
+          }
+        });
+      } catch (e) {
+        print("Error loading plant details: $e");
+        plantDetailsNotifier.setPlantDetails(
+          PlantDetails(
+            name: tappedPlant.plantInfo.displayName,
+            benefits: "Unable to load benefits information",
+            usage: "Unable to load usage information",
+            description: "Unable to load description",
+            isLoading: false,
+            error: e.toString(),
+          ),
+        );
+        statusNotifier.updateStatus("Error loading plant details");
+      }
     }
   }
 
@@ -385,8 +494,6 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
       child: Consumer(
         builder: (context, ref, child) {
           final plants = ref.watch(plantsProvider);
-          final selectedPlant = ref.watch(selectedPlantProvider);
-
           return Container(
             height: 80,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -472,6 +579,193 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     );
   }
 
+  Widget _buildPlantDetailsOverlay() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final showPlantDetails = ref.watch(showPlantDetailsProvider);
+        final plantDetails = ref.watch(plantDetailsProvider);
+
+        if (!showPlantDetails || plantDetails == null) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          color: Colors.black.withOpacity(0.7),
+          child: Center(
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with close button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          plantDetails.name,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          ref.read(showPlantDetailsProvider.notifier).hide();
+                          ref
+                              .read(plantDetailsProvider.notifier)
+                              .clearDetails();
+                        },
+                        icon: const Icon(Icons.close),
+                        color: Colors.grey,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  if (plantDetails.isLoading) ...[
+                    const Center(
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            "Loading plant information...",
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (plantDetails.error != null) ...[
+                    Center(
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Unable to load plant information",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            plantDetails.error!,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Content in scrollable container
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Benefits section
+                            _buildDetailSection(
+                              "Medical Benefits",
+                              plantDetails.benefits,
+                              Icons.healing,
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Usage section
+                            _buildDetailSection(
+                              "Usage & Application",
+                              plantDetails.usage,
+                              Icons.info,
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Description section
+                            _buildDetailSection(
+                              "Description",
+                              plantDetails.description,
+                              Icons.description,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailSection(String title, String content, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.green, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.green,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: Text(
+            content,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -499,6 +793,15 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
                   final placedAnchorsNotifier = ref.read(
                     placedAnchorsProvider.notifier,
                   );
+                  final placedPlantsNotifier = ref.read(
+                    placedPlantsProvider.notifier,
+                  );
+                  final plantDetailsNotifier = ref.read(
+                    plantDetailsProvider.notifier,
+                  );
+                  final showPlantDetailsNotifier = ref.read(
+                    showPlantDetailsProvider.notifier,
+                  );
                   final statusNotifier = ref.read(statusProvider.notifier);
 
                   try {
@@ -506,6 +809,9 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
                       await arState.arAnchorManager?.removeAnchor(anchor);
                     }
                     placedAnchorsNotifier.clearAnchors();
+                    placedPlantsNotifier.clearPlacedPlants();
+                    plantDetailsNotifier.clearDetails();
+                    showPlantDetailsNotifier.hide();
                     objectCountNotifier.reset();
                     statusNotifier.updateStatus(
                       "All plants cleared - tap surfaces to place new ones",
@@ -541,6 +847,9 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
             // Plant selector
             _buildPlantSelector(),
+
+            // Plant details overlay
+            _buildPlantDetailsOverlay(),
 
             // Loading indicator during initialization
             Consumer(

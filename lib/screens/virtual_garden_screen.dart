@@ -262,8 +262,8 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
       try {
         // Get plant details from Gemini - using a dummy API key for now
-        const geminiApiKey = "YOUR_API_KEY_HERE"; // You'll need to replace this
-        final geminiService = GeminiService(geminiApiKey);
+        //const geminiApiKey = "AIzaSyCoC1J_-dYZkQYlR-DQ-IUd2xRcyCBhBFU"; // You'll need to replace this
+        final geminiService = GeminiService();
 
         final plantDetailsResponse = await geminiService.getPlantDetails(
           tappedPlant.plantInfo.displayName,

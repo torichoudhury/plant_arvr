@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class PlantDetailsResponse {
   final String benefits;
@@ -16,9 +17,14 @@ class PlantDetailsResponse {
 class GeminiService {
   static const String _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
-  final String _apiKey; // Store your Gemini API key securely
+  late final String _apiKey;
 
-  GeminiService(this._apiKey);
+  GeminiService() {
+    _apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    if (_apiKey.isEmpty) {
+      throw Exception('GEMINI_API_KEY not found in .env file');
+    }
+  }
 
   Future<String> getMedicalBenefits(String plantName) async {
     try {
@@ -63,7 +69,7 @@ class GeminiService {
                 {
                   'text':
                       '''
-                  Please provide detailed information about $plantName in the following format:
+                  provide detailed information about $plantName in the following format:
                   
                   BENEFITS:
                   [List the medical and health benefits]

@@ -1,5 +1,3 @@
-
-
 // Main App Widget
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,12 +23,11 @@ class ImprovedARTest extends ConsumerStatefulWidget {
 
 class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     with WidgetsBindingObserver {
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     // Start the status timer
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final arStateNotifier = ref.read(arStateProvider.notifier);
@@ -107,11 +104,13 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
       arStateNotifier.setARReady(true);
       arStateNotifier.setInitializing(false);
-      
+
       final selectedPlant = ref.read(selectedPlantProvider);
       final plants = ref.read(plantsProvider);
       final plantInfo = plants.firstWhere((p) => p.id == selectedPlant);
-      statusNotifier.updateStatus("AR Ready! Tap to place a ${plantInfo.displayName} plant");
+      statusNotifier.updateStatus(
+        "AR Ready! Tap to place a ${plantInfo.displayName} plant",
+      );
 
       print("AR initialization completed successfully");
     } catch (e) {
@@ -136,10 +135,14 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     }
 
     if (hitTestResults.isEmpty) {
-      statusNotifier.updateStatus("No surface found - try pointing at a flat, textured surface");
+      statusNotifier.updateStatus(
+        "No surface found - try pointing at a flat, textured surface",
+      );
       Timer(const Duration(seconds: 3), () {
         if (mounted) {
-          statusNotifier.updateStatus("Point at flat surfaces and tap to place plants");
+          statusNotifier.updateStatus(
+            "Point at flat surfaces and tap to place plants",
+          );
         }
       });
       return;
@@ -154,7 +157,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
       if (didAddAnchor == true) {
         final plantInfo = plants.firstWhere((p) => p.id == selectedPlant);
-        
+
         var node = await _loadModel(
           plantInfo.modelUrl,
           "${selectedPlant}_$objectCount",
@@ -170,18 +173,24 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
           placedAnchorsNotifier.addAnchor(anchor);
           objectCountNotifier.increment();
           final newCount = ref.read(objectCountProvider);
-          statusNotifier.updateStatus("Success! ${plantInfo.displayName} #$newCount placed");
+          statusNotifier.updateStatus(
+            "Success! ${plantInfo.displayName} #$newCount placed",
+          );
 
           Timer(const Duration(seconds: 2), () {
             if (mounted) {
-              statusNotifier.updateStatus("Tap on surfaces to place more plants");
+              statusNotifier.updateStatus(
+                "Tap on surfaces to place more plants",
+              );
             }
           });
         } else {
           statusNotifier.updateStatus("Failed to place object - try again");
         }
       } else {
-        statusNotifier.updateStatus("Could not anchor to surface - try a different spot");
+        statusNotifier.updateStatus(
+          "Could not anchor to surface - try a different spot",
+        );
       }
     } catch (e) {
       print("Error in onPlaneTap: $e");
@@ -241,10 +250,12 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
       child: Consumer(
         builder: (context, ref, child) {
           final statusText = ref.watch(statusProvider);
-          final isARReady = ref.watch(arStateProvider.select((state) => state.isARReady));
-          
+          final isARReady = ref.watch(
+            arStateProvider.select((state) => state.isARReady),
+          );
+
           return Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.8),
               borderRadius: BorderRadius.circular(12),
@@ -258,13 +269,14 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Icon(
                       isARReady ? Icons.check_circle : Icons.hourglass_empty,
                       color: isARReady ? Colors.green : Colors.orange,
-                      size: 20,
+                      size: 18,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -272,33 +284,43 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
                         statusText,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
-                        textAlign: TextAlign.left,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
                 if (isARReady) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    "Tips for better detection:",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  const SizedBox(height: 8),
+                  ExpansionTile(
+                    title: const Text(
+                      "Tips for better detection",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "• Ensure good lighting\n• Use textured surfaces (avoid plain white)\n• Move device slowly to scan\n• Try tables, floors, or books",
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                    textAlign: TextAlign.left,
+                    iconColor: Colors.white,
+                    collapsedIconColor: Colors.white,
+                    tilePadding: EdgeInsets.zero,
+                    dense: true,
+                    children: const [
+                      Padding(
+                        padding: EdgeInsets.only(top: 4, bottom: 8),
+                        child: Text(
+                          "• Ensure good lighting\n• Use textured surfaces\n• Move device slowly to scan\n• Try tables, floors, or books",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
@@ -311,38 +333,43 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
 
   Widget _buildObjectCounter() {
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 80,
+      bottom: 140, // Fixed position to avoid overlap with plant selector
       left: 16,
       right: 16,
       child: Consumer(
         builder: (context, ref, child) {
           final objectCount = ref.watch(objectCountProvider);
           final currentPlantInfo = ref.watch(currentPlantInfoProvider);
-          
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(25),
-              boxShadow: const [
-                BoxShadow(color: Colors.green, blurRadius: 8, offset: Offset(0, 2)),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(currentPlantInfo.icon, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  "${currentPlantInfo.displayName} Plants: $objectCount",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+
+          return Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.green,
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(currentPlantInfo.icon, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    "${currentPlantInfo.displayName}: $objectCount",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -353,19 +380,26 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
   Widget _buildPlantSelector() {
     return Positioned(
       bottom: MediaQuery.of(context).padding.bottom + 20,
-      left: 16,
-      right: 16,
+      left: 0,
+      right: 0,
       child: Consumer(
         builder: (context, ref, child) {
           final plants = ref.watch(plantsProvider);
           final selectedPlant = ref.watch(selectedPlantProvider);
-          
-          return SizedBox(
-            height: 100,
-            child: ListView(
+
+          return Container(
+            height: 80,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              children: plants.map((plant) => _buildPlantButton(plant)).toList(),
+              itemCount: plants.length,
+              itemBuilder: (context, index) {
+                final plant = plants[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _buildPlantButton(plant),
+                );
+              },
             ),
           );
         },
@@ -374,57 +408,67 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
   }
 
   Widget _buildPlantButton(PlantInfo plant) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Consumer(
-        builder: (context, ref, child) {
-          final selectedPlant = ref.watch(selectedPlantProvider);
-          final selectedPlantNotifier = ref.read(selectedPlantProvider.notifier);
-          final statusNotifier = ref.read(statusProvider.notifier);
-          
-          return GestureDetector(
-            onTap: () {
-              selectedPlantNotifier.selectPlant(plant.id);
-              statusNotifier.updateStatus("${plant.displayName} selected - tap surfaces to place plants");
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: selectedPlant == plant.id
-                    ? Colors.green
-                    : Colors.white.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    plant.icon,
-                    color: selectedPlant == plant.id ? Colors.white : Colors.green,
-                    size: 24,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
+    return Consumer(
+      builder: (context, ref, child) {
+        final selectedPlant = ref.watch(selectedPlantProvider);
+        final selectedPlantNotifier = ref.read(selectedPlantProvider.notifier);
+        final statusNotifier = ref.read(statusProvider.notifier);
+
+        return GestureDetector(
+          onTap: () {
+            selectedPlantNotifier.selectPlant(plant.id);
+            statusNotifier.updateStatus(
+              "${plant.displayName} selected - tap surfaces to place plants",
+            );
+          },
+          child: Container(
+            width: 70,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            decoration: BoxDecoration(
+              color: selectedPlant == plant.id
+                  ? Colors.green
+                  : Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  plant.icon,
+                  color: selectedPlant == plant.id
+                      ? Colors.white
+                      : Colors.green,
+                  size: 20,
+                ),
+                const SizedBox(height: 4),
+                Flexible(
+                  child: Text(
                     plant.displayName,
                     style: TextStyle(
-                      color: selectedPlant == plant.id ? Colors.white : Colors.green,
+                      color: selectedPlant == plant.id
+                          ? Colors.white
+                          : Colors.green,
                       fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                      fontSize: 10,
                     ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -433,7 +477,7 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('AR Surface Detection'),
+        title: const Text('AR Garden', style: TextStyle(fontSize: 18)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -442,28 +486,36 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
             builder: (context, ref, child) {
               final objectCount = ref.watch(objectCountProvider);
               final placedAnchors = ref.watch(placedAnchorsProvider);
-              
+
               if (objectCount == 0) return const SizedBox.shrink();
-              
+
               return IconButton(
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh, size: 20),
                 onPressed: () async {
                   final arState = ref.read(arStateProvider);
-                  final objectCountNotifier = ref.read(objectCountProvider.notifier);
-                  final placedAnchorsNotifier = ref.read(placedAnchorsProvider.notifier);
+                  final objectCountNotifier = ref.read(
+                    objectCountProvider.notifier,
+                  );
+                  final placedAnchorsNotifier = ref.read(
+                    placedAnchorsProvider.notifier,
+                  );
                   final statusNotifier = ref.read(statusProvider.notifier);
-                  
+
                   try {
                     for (ARPlaneAnchor anchor in placedAnchors) {
                       await arState.arAnchorManager?.removeAnchor(anchor);
                     }
                     placedAnchorsNotifier.clearAnchors();
                     objectCountNotifier.reset();
-                    statusNotifier.updateStatus("All plants cleared - tap surfaces to place new ones");
+                    statusNotifier.updateStatus(
+                      "All plants cleared - tap surfaces to place new ones",
+                    );
                     print("Successfully cleared all objects");
                   } catch (e) {
                     print("Error clearing objects: $e");
-                    statusNotifier.updateStatus("Error clearing objects - try restarting");
+                    statusNotifier.updateStatus(
+                      "Error clearing objects - try restarting",
+                    );
                   }
                 },
                 tooltip: 'Clear all plants',
@@ -472,48 +524,57 @@ class _ImprovedARTestState extends ConsumerState<ImprovedARTest>
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          // AR View
-          ARView(
-            onARViewCreated: onARViewCreated,
-            planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
-          ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // AR View
+            ARView(
+              onARViewCreated: onARViewCreated,
+              planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
+            ),
 
-          // Status overlay
-          _buildStatusOverlay(),
+            // Status overlay
+            _buildStatusOverlay(),
 
-          // Object counter
-          _buildObjectCounter(),
+            // Object counter
+            _buildObjectCounter(),
 
-          // Plant selector
-          _buildPlantSelector(),
+            // Plant selector
+            _buildPlantSelector(),
 
-          // Loading indicator during initialization
-          Consumer(
-            builder: (context, ref, child) {
-              final isInitializing = ref.watch(arStateProvider.select((state) => state.isInitializing));
-              
-              if (!isInitializing) return const SizedBox.shrink();
-              
-              return const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            // Loading indicator during initialization
+            Consumer(
+              builder: (context, ref, child) {
+                final isInitializing = ref.watch(
+                  arStateProvider.select((state) => state.isInitializing),
+                );
+
+                if (!isInitializing) return const SizedBox.shrink();
+
+                return Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          "Initializing AR...",
+                          style: TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 16),
-                    Text(
-                      "Initializing AR...",
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
